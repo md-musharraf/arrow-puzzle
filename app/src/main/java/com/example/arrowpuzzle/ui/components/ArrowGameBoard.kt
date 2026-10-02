@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import com.example.arrowpuzzle.data.model.Direction
 import com.example.arrowpuzzle.data.model.PathArrow
 import com.example.arrowpuzzle.theme.Accent
@@ -54,6 +55,9 @@ import com.example.arrowpuzzle.theme.Ink
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
+
+/** Lets end-to-end tests find the board and tap cells on it. */
+const val BOARD_TAG = "board"
 
 private const val TUBE = 0.15f          // line width, as a fraction of the smaller cell side
 private const val HEAD = 0.27f          // arrowhead half-width, also a fraction of that cell side
@@ -168,6 +172,7 @@ fun ArrowGameBoard(
         modifier = modifier
             .aspectRatio(cols.toFloat() / rows.toFloat())
             .clipToBounds()
+            .testTag(BOARD_TAG)
     ) {
         val density = LocalDensity.current
         val boardW = with(density) { maxWidth.toPx() }

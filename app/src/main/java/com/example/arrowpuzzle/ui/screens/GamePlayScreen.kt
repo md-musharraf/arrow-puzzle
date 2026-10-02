@@ -70,6 +70,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -319,7 +321,7 @@ private fun ProgressBar(fraction: Float) {
 
 @Composable
 private fun ArrowsLeftPill(count: Int) {
-    Pill {
+    Pill(Modifier.clearAndSetSemantics { contentDescription = "$count arrows left" }) {
         Icon(
             Icons.AutoMirrored.Filled.Send,
             contentDescription = "Arrows left",
@@ -358,7 +360,10 @@ private fun DifficultyPill(state: GameUiState) {
 /** A lost heart pops, then drains to grey. A restored one (new board) simply refills. */
 @Composable
 private fun Lives(maxMistakes: Int, remaining: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clearAndSetSemantics { contentDescription = "$remaining of $maxMistakes lives" }
+    ) {
         repeat(maxMistakes) { i ->
             val alive = i < remaining
             val pop = remember { Animatable(1f) }
@@ -500,9 +505,9 @@ private fun RoundIcon(icon: ImageVector, description: String, onClick: () -> Uni
 }
 
 @Composable
-private fun Pill(content: @Composable () -> Unit) {
+private fun Pill(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(Chip)
             .padding(horizontal = 12.dp, vertical = 7.dp),

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- One arrow: up, turn right, and out. The whole game in a single glyph. -->
+    <path
+        android:pathData="M39,71 L39,43 L55,43"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#4D82FF"
+        android:pathData="M55,32 L74,43 L55,54 Z" />
+</vector>

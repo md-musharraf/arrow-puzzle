@@ -106,8 +106,8 @@ class BoardZoomState {
 @Composable
 fun rememberBoardZoomState(): BoardZoomState = remember { BoardZoomState() }
 
-/** A path with its pixel geometry precomputed, so the draw pass never rebuilds it. */
-private class Rendered(val arrow: PathArrow, val points: List<Offset>, val outline: Path)
+/** A path with its pixel geometry — body and head — precomputed, so drawing never rebuilds it. */
+private class Rendered(val arrow: PathArrow, val points: List<Offset>, val outline: Path, val head: Path)
 
 /**
  * An arrow slithering off the board after a successful tap.
@@ -126,7 +126,8 @@ private class Escape(
     val trackLength: Float,
     /** An undo plays the slither backwards, so the arrow crawls back into its own cells. */
     val returning: Boolean = false,
-    val window: Path = Path()
+    val window: Path = Path(),
+    val head: Path = Path()
 )
 
 /** Builds the extended track an escaping arrow travels along. */
@@ -182,6 +183,9 @@ fun ArrowGameBoard(
         val cell = min(cellW, cellH)
         val stroke = cell * TUBE
         val headHalf = cell * HEAD
+        // One Stroke per width for the life of the board, not one per arrow per frame.
+        val bodyStroke = remember(stroke) { Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round) }
+        val haloStroke = remember(stroke) { Stroke(width = stroke * 3f, cap = StrokeCap.Round, join = StrokeJoin.Round) }
 
         // Geometry is keyed by arrow id and reused across taps. Clearing one arrow used to
         // rebuild every remaining arrow's Path, which on a packed board is dozens of throwaway
@@ -274,7 +278,10 @@ fun ArrowGameBoard(
             animated
         }
 
-        Canvas(
+        // Two layers: the resting board, and the arrows in flight. Escapes animate every frame for
+        // half a second per tap; keeping them on their own canvas means only the one or two moving
+        // arrows are redrawn, not every arrow on a packed board.
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -284,6 +291,7 @@ fun ArrowGameBoard(
                     translationY = zoom.offset.y
                 }
         ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val entryValue = entry.value
             val settled = entryValue >= 1f
             val count = rendered.size.coerceAtLeast(1)
@@ -316,11 +324,13 @@ fun ArrowGameBoard(
 
                 val displacement = Offset(d.dc * shift, d.dr * shift)
                 if (hintPathId == id) {
-                    drawArrow(r, stroke * 3f, 0f, Accent.copy(alpha = pulse), displacement)
+                    drawArrow(r, haloStroke, false, Accent.copy(alpha = pulse), displacement)
                 }
-                drawArrow(r, stroke, headHalf, color, displacement)
+                drawArrow(r, bodyStroke, true, color, displacement)
             }
+        }
 
+        Canvas(modifier = Modifier.fillMaxSize()) {
             for (e in escaping) {
                 // The head runs from the arrow's own tip out to the end of the track; the tail
                 // trails exactly one body-length behind it, following the same corners.
@@ -329,21 +339,14 @@ fun ArrowGameBoard(
 
                 e.window.reset()
                 if (e.track.getSegment(tailAt, headAt, e.window, true)) {
-                    drawPath(
-                        path = e.window,
-                        color = Ink,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    )
+                    drawPath(path = e.window, color = Ink, style = bodyStroke)
                 }
                 // Past its own tip the head is always travelling straight out, so the tip keeps
                 // the arrow's exit direction for the whole slither.
-                drawHead(
-                    tip = e.track.getPosition(headAt),
-                    direction = e.rendered.arrow.exitDirection,
-                    headHalf = headHalf,
-                    color = Ink
-                )
+                e.head.setHead(e.track.getPosition(headAt), e.rendered.arrow.exitDirection, headHalf)
+                drawPath(path = e.head, color = Ink)
             }
+        }
         }
 
         // Gestures sit on an untransformed overlay so pan and zoom share one coordinate space;
@@ -403,41 +406,31 @@ fun ArrowGameBoard(
  */
 private fun DrawScope.drawArrow(
     r: Rendered,
-    width: Float,
-    headHalf: Float,
+    stroke: Stroke,
+    withHead: Boolean,
     color: Color,
     shift: Offset
 ) {
     translate(shift.x, shift.y) {
-        drawPath(
-            path = r.outline,
-            color = color,
-            style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-        if (headHalf <= 0f) return@translate
-        drawHead(r.points.last(), r.arrow.exitDirection, headHalf, color)
+        drawPath(path = r.outline, color = color, style = stroke)
+        if (withHead) drawPath(path = r.head, color = color)
     }
 }
 
-/** The solid tip, pointing along [direction]. Sized from the cell so a thin body keeps a bold head. */
-private fun DrawScope.drawHead(
-    tip: Offset,
-    direction: Direction,
-    headHalf: Float,
-    color: Color
-) {
+/**
+ * Rewrites this path as a solid tip pointing along [direction]. Sized from the cell so a thin
+ * body keeps a bold head. Reuses the path, so a moving head costs no allocation per frame.
+ */
+private fun Path.setHead(tip: Offset, direction: Direction, headHalf: Float) {
     val ax = direction.dc.toFloat()
     val ay = direction.dr.toFloat()
-    val base = Offset(tip.x - ax * headHalf * 0.35f, tip.y - ay * headHalf * 0.35f)
-    drawPath(
-        path = Path().apply {
-            moveTo(base.x - ay * headHalf, base.y + ax * headHalf)
-            lineTo(tip.x + ax * headHalf * 1.3f, tip.y + ay * headHalf * 1.3f)
-            lineTo(base.x + ay * headHalf, base.y - ax * headHalf)
-            close()
-        },
-        color = color
-    )
+    val baseX = tip.x - ax * headHalf * 0.35f
+    val baseY = tip.y - ay * headHalf * 0.35f
+    reset()
+    moveTo(baseX - ay * headHalf, baseY + ax * headHalf)
+    lineTo(tip.x + ax * headHalf * 1.3f, tip.y + ay * headHalf * 1.3f)
+    lineTo(baseX + ay * headHalf, baseY - ax * headHalf)
+    close()
 }
 
 private fun render(arrow: PathArrow, cellW: Float, cellH: Float): Rendered {
@@ -446,7 +439,8 @@ private fun render(arrow: PathArrow, cellW: Float, cellH: Float): Rendered {
         moveTo(points[0].x, points[0].y)
         for (i in 1 until points.size) lineTo(points[i].x, points[i].y)
     }
-    return Rendered(arrow, points, outline)
+    val head = Path().apply { setHead(points.last(), arrow.exitDirection, min(cellW, cellH) * HEAD) }
+    return Rendered(arrow, points, outline, head)
 }
 
 /** Picks the arrow whose body is closest to the tap, so overlapping paths resolve predictably. */

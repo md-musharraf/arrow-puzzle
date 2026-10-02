@@ -47,8 +47,9 @@ class DifficultyRampTest {
 
     @Test
     fun lateLevelsAreSubstantiallyDeeperThanEarlyOnes() {
+        // Mid sits before the board-size cap; by ~level 80 the ramp is close to its ceiling.
         val early = meanWaves(3)
-        val mid = meanWaves(80)
+        val mid = meanWaves(40)
         val late = meanWaves(300)
 
         assertTrue("mid ($mid) must out-tangle early ($early)", mid > early + 1)
@@ -67,7 +68,11 @@ class DifficultyRampTest {
             )
             return level.paths.map { it.waypoints.size - 1 }.average()
         }
-        assertTrue(meanCorners(200) > meanCorners(2) + 1.0)
+        // Averaged over a full cycle of silhouettes: one thin shape (a Cross) winds less than a
+        // square at any level, so a single sample says more about its shape than its level.
+        val early = (1..9).map(::meanCorners).average()
+        val late = (200..208).map(::meanCorners).average()
+        assertTrue("late ($late) must wind more than early ($early)", late > early + 1.0)
     }
 
     /**
@@ -91,6 +96,50 @@ class DifficultyRampTest {
             assertTrue("level $levelNumber has no arrows", level.paths.isNotEmpty())
             assertTrue("level $levelNumber deadlocks", GameEngine.isLevelSolvable(level))
         }
+    }
+
+    /**
+     * An arrow whose body lies in its own exit lane points at its own tail and, on escape, would
+     * slide its head straight through itself. The engine ignores self-blocking, so only a test
+     * catches it.
+     */
+    @Test
+    fun noArrowPointsIntoItsOwnBody() {
+        val boards = listOf(1, 7, 40, 99, 150, 300, 777).map { LevelsRepository.getLevel(it) } +
+            Difficulty.entries.map { d ->
+                ProceduralLevelGenerator.generate(9999, 1, LevelsRepository.endlessRecipe(d, 25), Random(d.ordinal + 5L))
+            }
+        for (level in boards) {
+            for (arrow in level.paths) {
+                val head = arrow.headPoint
+                val d = arrow.exitDirection
+                val selfHit = arrow.occupiedCells.any { cell ->
+                    val dr = cell.r - head.r
+                    val dc = cell.c - head.c
+                    if (d.dr != 0) dc == 0 && dr * d.dr > 0 else dr == 0 && dc * d.dc > 0
+                }
+                assertTrue("level ${level.levelNumber} arrow ${arrow.id} points into itself", !selfHit)
+            }
+        }
+    }
+
+    /**
+     * Packing leaves many arrows tappable on move one; filler trimming brings boards back to their
+     * opening budget. It can only drop arrows that block nothing, so a free arrow holding up
+     * another stays — measured, that leaves a few levels up to three over. Without trimming most
+     * early levels ran double their budget.
+     */
+    @Test
+    fun earlyBoardsMostlyKeepToTheirOpeningBudget() {
+        var within = 0
+        for (levelNumber in 1..30) {
+            val level = LevelsRepository.getLevel(levelNumber)
+            val open = GameEngine.findUnblockedPaths(level.paths, level.rows, level.cols).size
+            val budget = LevelsRepository.maxOpeningMovesFor(levelNumber)
+            if (open <= budget) within++
+            assertTrue("level $levelNumber opens with $open moves, budget $budget", open <= budget + 3)
+        }
+        assertTrue("only $within of 30 levels kept to their budget", within >= 22)
     }
 
     /** A level number must build the same board every time, on every device. */

@@ -22,28 +22,28 @@ import kotlin.random.Random
 object LevelsRepository {
 
     private const val BASE_BOARD = 8
-    private const val LEVELS_PER_EXTRA_CELL = 12
+    private const val LEVELS_PER_EXTRA_CELL = 8
 
     private const val BASE_TURNS = 2
     private const val MAX_TURNS = 12
-    private const val LEVELS_PER_EXTRA_TURN = 15
+    private const val LEVELS_PER_EXTRA_TURN = 10
 
     private const val BASE_MIN_TURNS = 1
     private const val MAX_MIN_TURNS = 6
-    private const val LEVELS_PER_EXTRA_MIN_TURN = 40
+    private const val LEVELS_PER_EXTRA_MIN_TURN = 30
 
-    private const val BASE_DEPTH = 2
+    private const val BASE_DEPTH = 3
     /**
      * Measurement puts the deepest chain a readable board can hold at roughly a third of its
      * arrows, so a ceiling much above this is one the generator can never satisfy — and an
      * unreachable target costs every one of [ProceduralLevelGenerator]'s retries on every build.
      */
     private const val MAX_DEPTH = 12
-    private const val LEVELS_PER_EXTRA_DEPTH = 11
+    private const val LEVELS_PER_EXTRA_DEPTH = 6
 
-    private const val BASE_OPENINGS = 10
+    private const val BASE_OPENINGS = 7
     private const val MIN_OPENINGS = 1
-    private const val LEVELS_PER_FEWER_OPENING = 18
+    private const val LEVELS_PER_FEWER_OPENING = 10
 
     /**
      * How many levels the picker offers beyond the furthest one unlocked. The campaign has no end,
@@ -111,9 +111,9 @@ object LevelsRepository {
     }
 
     fun getDifficultyForLevel(levelNumber: Int): Difficulty = when {
-        levelNumber <= 30 -> Difficulty.EASY
-        levelNumber <= 80 -> Difficulty.MEDIUM
-        levelNumber <= 140 -> Difficulty.HARD
+        levelNumber <= 20 -> Difficulty.EASY
+        levelNumber <= 50 -> Difficulty.MEDIUM
+        levelNumber <= 100 -> Difficulty.HARD
         else -> Difficulty.MASTER
     }
 

@@ -39,8 +39,10 @@ object ProceduralLevelGenerator {
     /**
      * Whole-board rebuilds allowed while chasing a recipe. Steering gets most boards there on the
      * first try; the retries cover seeds where the silhouette leaves too little room to tangle.
+     * Measured: 10 left thin silhouettes (Hex, Kite, Cross) at half their target depth; 30 cost
+     * up to a quarter second per board on desktop for little extra.
      */
-    private const val MAX_ATTEMPTS = 10
+    private const val MAX_ATTEMPTS = 16
 
     /** Cells a single run may cover before the arrow has to turn. */
     private const val MAX_RUN = 4
@@ -121,7 +123,7 @@ object ProceduralLevelGenerator {
         }
 
         val board = best ?: build(recipe, random)
-        val arrows = board.arrows
+        val arrows = trimFiller(board.arrows, recipe.size, recipe.maxOpeningMoves)
 
         return Level(
             id = levelId,
@@ -136,6 +138,49 @@ object ProceduralLevelGenerator {
             // A deeper board needs more reading per move, so allow time per wave too.
             targetTimeSeconds = arrows.size * 3 + board.depth * 5
         )
+    }
+
+    /**
+     * Drops free arrows that stand in front of nothing until the board offers at most
+     * [maxOpenings] first moves.
+     *
+     * Packing always leaves the last arrows it placed tappable on move one, and on a full board
+     * there is no free cell left to put a blocker in, so the opening count could not be steered
+     * down — late boards offered 15-20 free moves against a target of 1 or 2. An arrow that is
+     * free *and* blocks nothing is pure filler: removing it cannot free, block or re-order any
+     * other arrow, so depth and solvability are untouched and exactly one easy move disappears.
+     * The smallest go first, which keeps the board looking packed.
+     */
+    internal fun trimFiller(arrows: List<PathArrow>, size: Int, maxOpenings: Int): List<PathArrow> {
+        val owner = HashMap<Point, Int>()
+        for (a in arrows) for (cell in a.occupiedCells) owner[cell] = a.id
+        val laneOwners = HashMap<Point, MutableList<Int>>()
+        val lanes = arrows.associate { a ->
+            val lane = ArrayList<Point>()
+            var r = a.headPoint.r + a.exitDirection.dr
+            var c = a.headPoint.c + a.exitDirection.dc
+            while (r in 0 until size && c in 0 until size) {
+                val cell = Point(r, c)
+                lane += cell
+                laneOwners.getOrPut(cell) { mutableListOf() } += a.id
+                r += a.exitDirection.dr
+                c += a.exitDirection.dc
+            }
+            a.id to lane
+        }
+
+        val free = arrows.filter { a -> lanes.getValue(a.id).none { owner[it].let { o -> o != null && o != a.id } } }
+        var openings = free.size
+        val removed = HashSet<Int>()
+        for (a in free.sortedBy { it.occupiedCells.size }) {
+            if (openings <= maxOpenings) break
+            val blocksSomeone = a.occupiedCells.any { cell -> laneOwners[cell]?.any { it != a.id } == true }
+            if (!blocksSomeone) {
+                removed += a.id
+                openings--
+            }
+        }
+        return if (removed.isEmpty()) arrows else arrows.filter { it.id !in removed }
     }
 
     /** Fallback turn budget for callers that have no level number, such as a shared code. */
@@ -487,6 +532,9 @@ object ProceduralLevelGenerator {
                     val next = reached + heading
                     if (next.r !in 0 until size || next.c !in 0 until size) break
                     if (!inside[next.r][next.c] || taken[next.r][next.c]) break
+                    // Never wind back into its own exit lane: the arrow would point at its own
+                    // tail, and on escape its head would slide straight through its body.
+                    if (onExitRay(head, exit, next)) break
                     if (!body.add(next)) break
                     reached = next
                 }
@@ -500,6 +548,13 @@ object ProceduralLevelGenerator {
             }
 
             return corners.asReversed().toList()
+        }
+
+        /** True when [cell] lies on the straight line [head] flies out along. */
+        private fun onExitRay(head: Point, exit: Direction, cell: Point): Boolean {
+            val dr = cell.r - head.r
+            val dc = cell.c - head.c
+            return if (exit.dr != 0) dc == 0 && dr * exit.dr > 0 else dr == 0 && dc * exit.dc > 0
         }
 
         /** Every grid cell the segments between [points] pass through. */

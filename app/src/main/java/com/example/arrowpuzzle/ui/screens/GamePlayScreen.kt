@@ -62,6 +62,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -301,22 +303,22 @@ private fun Title(text: String, modifier: Modifier, style: TextStyle) {
     }
 }
 
+/** Animated in the draw phase only: a tap never re-lays out the screen to grow this bar. */
 @Composable
 private fun ProgressBar(fraction: Float) {
-    val animated by animateFloatAsState(
-        targetValue = fraction,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
-        label = "progress"
-    )
-    val color by animateColorAsState(if (fraction >= 1f) Success else Accent, label = "progressColor")
-    Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(Chip)) {
-        Box(
-            Modifier.fillMaxHeight()
-                .fillMaxWidth(animated.coerceIn(0f, 1f))
-                .clip(CircleShape)
-                .background(color)
-        )
+    val animated = remember { Animatable(fraction) }
+    LaunchedEffect(fraction) {
+        animated.animateTo(fraction, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow))
     }
+    val color by animateColorAsState(if (fraction >= 1f) Success else Accent, label = "progressColor")
+    Box(
+        Modifier.fillMaxWidth().height(6.dp).drawBehind {
+            val radius = CornerRadius(size.height / 2f)
+            drawRoundRect(Chip, cornerRadius = radius)
+            val filled = size.width * animated.value.coerceIn(0f, 1f)
+            if (filled > 0f) drawRoundRect(color, size = Size(filled, size.height), cornerRadius = radius)
+        }
+    )
 }
 
 @Composable
@@ -384,7 +386,7 @@ private fun Lives(maxMistakes: Int, remaining: Int) {
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.padding(horizontal = 3.dp).size(22.dp).scale(pop.value)
+                modifier = Modifier.padding(horizontal = 3.dp).size(22.dp).graphicsLayer { scaleX = pop.value; scaleY = pop.value }
             )
         }
     }
@@ -403,7 +405,9 @@ private fun ComboBurst(combo: Int) {
             progress.animateTo(1f, tween(950, easing = LinearOutSlowInEasing))
         }
     }
-    if (combo < 3 || progress.value >= 1f) return
+    // Fully faded once the animation ends; reading progress only inside the layer keeps the
+    // fade from recomposing on every frame.
+    if (combo < 3) return
     val (word, color) = when {
         combo >= 10 -> "Unstoppable!" to DiffMaster
         combo >= 7 -> "Amazing!" to Danger
